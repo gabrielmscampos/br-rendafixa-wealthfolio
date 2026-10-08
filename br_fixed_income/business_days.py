@@ -10,6 +10,18 @@ import datetime as dt
 import holidays
 
 
+# Brazil has had no daylight saving time since 2019, so Brasília time is a
+# fixed UTC-3 and needs no tz database (absent in slim containers).
+BRASILIA = dt.timezone(dt.timedelta(hours=-3), "BRT")
+
+
+def today_in_brazil() -> dt.date:
+    """Current date in Brasília. The machine's local date can be a day ahead
+    (e.g. a UTC container after 21:00 BRT), which would produce quotes dated
+    in the future."""
+    return dt.datetime.now(BRASILIA).date()
+
+
 class BusinessCalendar:
     def __init__(self) -> None:
         self._years: tuple[int, int] | None = None

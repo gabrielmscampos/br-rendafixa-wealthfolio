@@ -2,6 +2,8 @@ import datetime as dt
 
 import pytest
 
+from br_fixed_income.business_days import BRASILIA, today_in_brazil
+
 
 D = dt.date
 
@@ -58,3 +60,14 @@ def test_bd_convention(cal):
 
 def test_range_across_years(cal):
     assert cal.bd(D(2025, 12, 30), D(2026, 1, 5)) == 3  # 12-30, 12-31, 01-02
+
+
+def test_brasilia_date_lags_utc_late_in_the_evening():
+    # 01:00 UTC on Oct 8 is 22:00 on Oct 7 in Brasília.
+    utc = dt.datetime(2026, 10, 8, 1, 0, tzinfo=dt.UTC)
+    assert utc.astimezone(BRASILIA).date() == D(2026, 10, 7)
+
+
+def test_today_in_brazil_matches_utc_minus_3():
+    expected = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=3)).date()
+    assert today_in_brazil() == expected

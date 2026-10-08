@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from .bonds import InputError, load_bonds
-from .business_days import BusinessCalendar
+from .business_days import BusinessCalendar, today_in_brazil
 from .generator import DataSources, build_series
 from .logger import logger, setup_logging
 from .output import table, write_csv
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None, today: dt.date | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
 
-    today = today or dt.date.today()
+    today = today or today_in_brazil()
     until = args.until or today
     if until > today:
         logger.error("--until cannot be a future date (%s)", until)
