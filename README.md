@@ -46,25 +46,59 @@ cp bonds.example.yaml bonds.yaml
 | `maturity` | yes | Actual maturity date. For Educa+ and Renda+ the year in the name is not the maturity. |
 | `purchase_date` | yes | First purchase; the series starts here. |
 | `end_date` | no | Ends the series before maturity (e.g. issuer liquidation, payout by the FGC). |
-| `ipca_lag` | no | `IPCA` only: index lag in months (default 0). With lag N, each month accrues the IPCA of N months earlier. See [Calibrating IPCA](#calibrating-ipca). |
+| `ipca_lag` | no | `IPCA` only: index lag in months (default 0). With lag N, each period earns the IPCA of N months earlier. See [How the IPCA is applied](#how-the-ipca-is-applied). |
+| `ipca_accrual` | no | `IPCA` only: how the IPCA is split into monthly periods, `calendar` (default) or `anniversary`. See [How the IPCA is applied](#how-the-ipca-is-applied). |
 | `use_focus_survey` | no | `IPCA` only: `true` to project unpublished IPCA months with the BCB Focus survey median instead of repeating the last published IPCA (default `false`). See [Calibrating IPCA](#calibrating-ipca). |
 
 Tesouro codes and broker acronyms: `PRE` = LTN, `PREJ` = NTN-F, `IPCA` = NTN-B Principal, `IPCAJ` = NTN-B, `SELIC` = LFT, `IGPMJ` = NTN-C.
 
 For Tesouro, use one symbol per bond, even with several purchases. For bank bonds, each purchase with a different rate or date is a different curve and needs its own symbol, both in Wealthfolio and in the YAML.
 
+### How the IPCA is applied
+
+IBGE publishes one IPCA figure per month (for example, 0.88% for March 2026). The bond's IPCA factor is the product of those monthly figures over the time you held it. Two details vary between banks: where each monthly period starts and ends (`ipca_accrual`), and which month's IPCA a period earns (`ipca_lag`).
+
+**Partial periods.** When only part of a period has passed, the bond earns only that part of the month's IPCA, measured in business days. If 10 of a period's 21 business days have passed and the IPCA is 0.88%, the bond has earned `1.0088 ^ (10 / 21)`, about 0.42%. A complete period earns the whole 0.88%.
+
+**`ipca_accrual: calendar`** (default): the periods are calendar months, from the 1st of one month to the 1st of the next. Each month earns its own IPCA. A bond bought mid-month therefore starts with a partial month and, on any date other than the 1st, ends with one.
+
+**`ipca_accrual: anniversary`**: the periods start on the day of the month you bought the bond (its "anniversary"), so a bond bought on the 21st has periods from the 21st of one month to the 21st of the next. Each period earns the IPCA of the month it starts in. Only the current period is partial. When the purchase day does not exist in a month (the 31st, say), that month's anniversary falls on its last day.
+
+Example: an LCA bought on 2025-05-21 and held to maturity on 2026-05-21, with `ipca_lag: 0`:
+
+| | `calendar` | `anniversary` |
+|---|---|---|
+| Periods | May 21-31 (partial), June to April (whole months), May 1-21 2026 (partial) | May 21-June 21, June 21-July 21, ..., April 21-May 21 2026: 12 whole periods |
+| IPCA earned | part of May 2025, June 2025 to April 2026, part of May 2026 | May 2025 to April 2026, each one whole |
+
+**`ipca_lag: N`** shifts the IPCA back N months. With `calendar` and lag 1, October earns September's IPCA. With `anniversary` and lag 1, the period starting on October 21 earns September's IPCA.
+
 ### Calibrating IPCA
 
-Banks use different IPCA conventions. Run with `--check --until <statement date>` and compare the last price with the "Preço R$" column of your broker statement, varying `ipca_lag` and `use_focus_survey`. Differences of a few reais are expected. For the Pine CDB in the example, against the BTG statement of 2026-10-05 (R$ 1,037.88):
+Banks use different IPCA conventions. Run with `--check --until <statement date>` and compare the last price with the "Preço R$" column of your broker statement, varying `ipca_accrual`, `ipca_lag` and `use_focus_survey`. Start with `ipca_accrual: anniversary` and `ipca_lag: 0`.
+
+A bond that has already matured is the cleanest test, because every IPCA month it needs is published and nothing is projected. For the LCA above, BTG reports R$ 1,120.434076 at maturity:
 
 | Setting | Price | Difference |
 |---|---|---|
-| `ipca_lag: 0` | 1,026.90 | -10.98 |
-| `ipca_lag: 0`, `use_focus_survey: true` | 1,037.01 | -0.87 |
-| `ipca_lag: 1` | 1,036.45 | -1.43 |
-| `ipca_lag: 1`, `use_focus_survey: true` | 1,037.36 | -0.52 |
+| `calendar`, `ipca_lag: 0` | 1,122.849736 | +2.415660 |
+| `calendar`, `ipca_lag: 1` | 1,119.649390 | -0.784686 |
+| `anniversary`, `ipca_lag: 0` | 1,120.436327 | +0.002251 |
+| `anniversary`, `ipca_lag: 1` | 1,117.765177 | -2.668899 |
 
-How the IPCA factor is built: each calendar month between the purchase date and the quote date contributes `(1 + IPCA / 100)`, prorated by business days in the first and last month. With `ipca_lag: N`, a month uses the IPCA of N months earlier (with `ipca_lag: 1`, October accrues September's IPCA).
+The remaining R$ 0.002 may come from rounding, since the BCB series used here gives the IPCA with two decimals.
+
+For a bond still running, the recent months are projected (see below), so differences of a few reais are expected. For the Pine CDB in the example, against the BTG statement of 2026-10-05 (R$ 1,037.88):
+
+| Setting | Price | Difference |
+|---|---|---|
+| `calendar`, `ipca_lag: 0` | 1,026.90 | -10.98 |
+| `calendar`, `ipca_lag: 0`, `use_focus_survey: true` | 1,037.01 | -0.87 |
+| `calendar`, `ipca_lag: 1` | 1,036.45 | -1.43 |
+| `calendar`, `ipca_lag: 1`, `use_focus_survey: true` | 1,037.36 | -0.52 |
+| `anniversary`, `ipca_lag: 0` | 1,033.27 | -4.61 |
+| `anniversary`, `ipca_lag: 0`, `use_focus_survey: true` | 1,037.35 | -0.53 |
+| `anniversary`, `ipca_lag: 1` | 1,043.53 | +5.65 |
 
 IPCA projection: IBGE publishes each month's IPCA around the 10th of the following month, so the most recent months are usually not published yet. Those months are projected in one of two ways, and the summary table lists them in a warning:
 

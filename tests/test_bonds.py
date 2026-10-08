@@ -50,6 +50,8 @@ def test_example_loads():
         (_cdi(type="TESOURO"), "tesouro_bond"),
         (_cdi(type="TESOURO", tesouro_bond="LTN"), "tesouro_bond"),
         (_cdi(type="IPCA", ipca_lag=-1), "ipca_lag"),
+        (_cdi(ipca_accrual="anniversary"), "ipca_accrual"),
+        (_cdi(type="IPCA", ipca_accrual="monthly"), "ipca_accrual"),
         (_cdi(use_focus_survey=True), "use_focus_survey"),
         (_cdi(type="IPCA", use_focus_survey="yes"), "use_focus_survey"),
         (_cdi(type="IPCA", use_focus_survey=1), "use_focus_survey"),
@@ -68,6 +70,14 @@ def test_use_focus_survey():
     item = _cdi(type="IPCA", use_focus_survey=True)
     (b,) = validate_bonds({"bonds": [item]}, TODAY)
     assert b.use_focus_survey is True
+
+
+def test_ipca_accrual():
+    (b,) = validate_bonds({"bonds": [_cdi(type="IPCA")]}, TODAY)
+    assert b.ipca_accrual == "calendar"
+    item = _cdi(type="IPCA", ipca_accrual="anniversary")
+    (b,) = validate_bonds({"bonds": [item]}, TODAY)
+    assert b.ipca_accrual == "anniversary"
 
 
 def test_unique_symbol():

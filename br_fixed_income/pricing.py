@@ -4,7 +4,9 @@ Bank bonds: price(t) = purchase_price * factor(t), with factor(purchase_date) = 
 Tesouro: market price from the official sources.
 """
 
+import calendar
 import datetime as dt
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .business_days import BusinessCalendar
@@ -25,10 +27,6 @@ class Quote:
 class Series:
     quotes: list[Quote]
     warnings: list[str]
-
-
-def _month_start(d: dt.date) -> dt.date:
-    return d.replace(day=1)
 
 
 def add_months(d: dt.date, months: int) -> dt.date:
@@ -111,6 +109,40 @@ def percent_of_index_series(
 PROJECTION_FOCUS = "Focus survey median"
 PROJECTION_LAST = "last published"
 
+ACCRUAL_CALENDAR = "calendar"
+ACCRUAL_ANNIVERSARY = "anniversary"
+IPCA_ACCRUALS = (ACCRUAL_CALENDAR, ACCRUAL_ANNIVERSARY)
+
+
+def _anniversary(start: dt.date, months: int) -> dt.date:
+    """start shifted `months` months, its day clamped to the month's last day."""
+    first = add_months(start, months)
+    last_day = calendar.monthrange(first.year, first.month)[1]
+    return first.replace(day=min(start.day, last_day))
+
+
+def _ipca_periods(
+    start: dt.date, t: dt.date, accrual: str
+) -> Iterator[tuple[dt.date, dt.date]]:
+    """Monthly periods [a, b) that start before t and overlap [start, t).
+
+    calendar: calendar months, the first one containing `start`.
+    anniversary: from each monthly anniversary of `start` to the next one.
+    """
+    if accrual not in IPCA_ACCRUALS:
+        raise PricingError(f"unknown IPCA accrual: {accrual!r}")
+    k = 0
+    while True:
+        if accrual == ACCRUAL_ANNIVERSARY:
+            a, b = _anniversary(start, k), _anniversary(start, k + 1)
+        else:
+            a = add_months(start, k)
+            b = add_months(start, k + 1)
+        if a >= t:
+            return
+        yield a, b
+        k += 1
+
 
 def ipca_factor(
     start: dt.date,
@@ -119,12 +151,14 @@ def ipca_factor(
     lag: int,
     cal: BusinessCalendar,
     expectations: dict[dt.date, float] | None = None,
+    accrual: str = ACCRUAL_CALENDAR,
 ) -> tuple[float, dict[dt.date, str]]:
     """Accumulated IPCA factor from start to t, and the projected months.
 
-    Each calendar month overlapping [start, t) contributes
-    (1 + ipca_m/100) ^ (elapsed_bd / month_bd), where ipca_m is the IPCA of the
-    month shifted `lag` months back. Full months have exponent 1.
+    [start, t) is split into monthly periods (see `_ipca_periods`). Each period
+    [a, b) contributes (1 + ipca_m/100) ^ (bd(max(start, a), min(t, b)) / bd(a, b)),
+    where ipca_m is the IPCA of the month containing a, shifted `lag` months
+    back. Complete periods have exponent 1.
     A month not yet published uses `expectations` (Focus survey) when it has
     that month, and otherwise repeats the last published IPCA.
     `ipca` and `expectations` are keyed by the first day of the month; the
@@ -133,27 +167,23 @@ def ipca_factor(
     last_month = max(ipca) if ipca else None
     factor = 1.0
     projected: dict[dt.date, str] = {}
-    month = _month_start(start)
-    while month < t:
-        next_month = add_months(month, 1)
-        elapsed = cal.bd(max(start, month), min(t, next_month))
-        if elapsed:
-            ref = add_months(month, -lag)
-            if ref in ipca:
-                value = ipca[ref]
-            elif last_month is not None and ref > last_month:
-                if expectations is not None and ref in expectations:
-                    value = expectations[ref]
-                    projected[ref] = PROJECTION_FOCUS
-                else:
-                    value = ipca[last_month]
-                    projected[ref] = PROJECTION_LAST
+    for a, b in _ipca_periods(start, t, accrual):
+        elapsed = cal.bd(max(start, a), min(t, b))
+        if not elapsed:
+            continue
+        ref = add_months(a, -lag)
+        if ref in ipca:
+            value = ipca[ref]
+        elif last_month is not None and ref > last_month:
+            if expectations is not None and ref in expectations:
+                value = expectations[ref]
+                projected[ref] = PROJECTION_FOCUS
             else:
-                raise PricingError(f"IPCA for {ref:%m/%Y} not found")
-            factor *= (1 + value / 100) ** (
-                elapsed / cal.bd(month, next_month)
-            )
-        month = next_month
+                value = ipca[last_month]
+                projected[ref] = PROJECTION_LAST
+        else:
+            raise PricingError(f"IPCA for {ref:%m/%Y} not found")
+        factor *= (1 + value / 100) ** (elapsed / cal.bd(a, b))
     return factor, projected
 
 
@@ -166,6 +196,7 @@ def ipca_series(
     end: dt.date,
     cal: BusinessCalendar,
     expectations: dict[dt.date, float] | None = None,
+    accrual: str = ACCRUAL_CALENDAR,
 ) -> Series:
     """factor(t) = ipca_factor(start, t) * (1 + annual_rate/100) ^ (bd(start, t) / 252)."""
     base = 1 + annual_rate / 100
@@ -173,7 +204,9 @@ def ipca_series(
     quotes = []
     projected: dict[dt.date, str] = {}
     for d in cal.business_days(start, end):
-        f_ipca, proj = ipca_factor(start, d, ipca, lag, cal, expectations)
+        f_ipca, proj = ipca_factor(
+            start, d, ipca, lag, cal, expectations, accrual
+        )
         projected |= proj
         quotes.append(
             Quote(

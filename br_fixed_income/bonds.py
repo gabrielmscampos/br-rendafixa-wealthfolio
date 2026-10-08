@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from .pricing import ACCRUAL_CALENDAR, IPCA_ACCRUALS
 from .tesouro_map import TESOURO_BONDS
 
 
@@ -24,6 +25,7 @@ FIELDS = {
     "purchase_date",
     "end_date",
     "ipca_lag",
+    "ipca_accrual",
     "use_focus_survey",
 }
 
@@ -44,6 +46,7 @@ class Bond:
     tesouro_bond: str | None = None
     end_date: dt.date | None = None
     ipca_lag: int = 0
+    ipca_accrual: str = ACCRUAL_CALENDAR
     use_focus_survey: bool = False
 
     @property
@@ -180,6 +183,17 @@ def _validate_item(item: Any, i: int, today: dt.date) -> Bond:
         if isinstance(v, bool) or not isinstance(v, int) or v < 0:
             raise error("ipca_lag", f"must be an integer >= 0 (got: {v!r})")
         kwargs["ipca_lag"] = v
+
+    if item.get("ipca_accrual") is not None:
+        if kind != "IPCA":
+            raise error("ipca_accrual", "only applies to bonds of type IPCA")
+        v = item["ipca_accrual"]
+        if v not in IPCA_ACCRUALS:
+            raise error(
+                "ipca_accrual",
+                f"must be one of {', '.join(IPCA_ACCRUALS)} (got: {v!r})",
+            )
+        kwargs["ipca_accrual"] = v
 
     if item.get("use_focus_survey") is not None:
         if kind != "IPCA":

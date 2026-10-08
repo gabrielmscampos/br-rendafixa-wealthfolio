@@ -179,6 +179,7 @@ def build_series(
             end,
             cal,
             data.focus_ipca() if bond.use_focus_survey else None,
+            bond.ipca_accrual,
         )
     elif bond.type == "TESOURO":
         series = _tesouro_series(bond, data, cal, start, end, today)
