@@ -1,0 +1,53 @@
+# Copy to bonds.yaml and adjust it with your own bonds.
+# Dates as YYYY-MM-DD; numbers with a dot as decimal separator.
+
+bonds:
+  # Tesouro Direto: market price, no rate or purchase price
+  - symbol: LTN_20320101
+    description: "Tesouro Prefixado 2032"
+    type: TESOURO
+    tesouro_bond: PRE           # PRE, PREJ, IPCA, IPCAJ, SELIC, IGPMJ, RENDA, EDUCA, RESERVA
+    maturity: 2032-01-01
+    purchase_date: 2025-07-30   # first purchase; the series starts here
+
+  - symbol: NTNBP_20290515
+    description: "Tesouro IPCA+ 2029"
+    type: TESOURO
+    tesouro_bond: IPCA
+    maturity: 2029-05-15
+    purchase_date: 2026-01-27
+
+  # Bank bonds: price computed from the rate, starting at the purchase price
+  - symbol: CDBB25BDVA0
+    description: "CDB Pefisa 114% of CDI"
+    type: CDI
+    rate: 114                   # % of CDI
+    maturity: 2027-11-26
+    purchase_date: 2025-11-26
+    purchase_price: 1000
+
+  - symbol: CDB526BEKVT
+    description: "CDB Pine IPCA + 8.15%"
+    type: IPCA
+    rate: 8.15                  # spread, % p.a.
+    maturity: 2030-05-22
+    purchase_date: 2026-05-22
+    purchase_price: 1000
+    ipca_lag: 1                 # optional, months (default 0)
+
+  # Other accepted formats:
+  #
+  # - symbol: CDB_PRE_EXAMPLE
+  #   type: PRE
+  #   rate: 14.5                # % p.a.
+  #   maturity: 2028-01-03
+  #   purchase_date: 2026-01-02
+  #   purchase_price: 1000
+  #
+  # - symbol: LCI_SELIC_EXAMPLE
+  #   type: SELIC
+  #   rate: 95                  # % of Selic
+  #   maturity: 2027-03-01
+  #   purchase_date: 2025-03-05
+  #   purchase_price: 1000
+  #   end_date: 2025-10-15      # issuer liquidated: the series stops here

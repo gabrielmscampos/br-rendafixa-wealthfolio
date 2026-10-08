@@ -1,0 +1,14 @@
+{
+  "TesouroLegado": [
+    {
+      "treasuryBondName": "Tesouro Prefixado 2032",
+      "isinCode": "...",
+      "maturityDate": "2032-01-01T00:00",
+      "unitaryRedemptionValue": 531.2,
+      "unitaryInvestmentValue": 534.15,
+      "lastMarketPricingDate": "2026-10-05T18:00:05.677",
+      "startDate": "2026-10-06T09:30:00.000"
+    }
+  ],
+  "Tesouro24x7": [ { "treasuryBondName": "Tesouro Reserva 2036", "...": "..." } ]
+}

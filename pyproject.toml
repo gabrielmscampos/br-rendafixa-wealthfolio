@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "br-rendafixa-wealthfolio-generator"
+dynamic = ["version"]
+description = "Generates historical quote CSVs for Brazilian fixed income, for import into Wealthfolio."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Gabriel Moreira", email = "gabrielmscampos@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "holidays>=0.106",
+    "httpx>=0.28.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+generate-quotes = "br_fixed_income.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+quality = [
+    "mypy>=2.4.0",
+    "pre-commit>=4.6.2",
+    "ruff>=0.16.10",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[tool.setuptools]
+packages = ["br_fixed_income"]
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+version_file = "br_fixed_income/_version.py"
