@@ -11,6 +11,6 @@ def setup_logging(verbose: bool = False) -> None:
         format="[%(levelname)s] %(message)s", level=logging.WARNING
     )
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-    logging.getLogger("httpx").setLevel(
+    logging.getLogger("httpx2").setLevel(
         logging.INFO if verbose else logging.WARNING
     )

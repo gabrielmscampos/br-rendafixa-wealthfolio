@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 
-import httpx
+import httpx2
 import pytest
 
 from br_fixed_income.sources import (
@@ -52,23 +52,23 @@ def test_sgs_long_ranges_are_paginated(server, cal):
 def test_sgs_retries_then_gives_up():
     responses = iter(
         [
-            httpx.Response(502, text="<html>"),
-            httpx.Response(
+            httpx2.Response(502, text="<html>"),
+            httpx2.Response(
                 200, json=[{"data": "01/10/2026", "valor": "0.05"}]
             ),
         ]
     )
-    with httpx.Client(
-        transport=httpx.MockTransport(lambda r: next(responses))
+    with httpx2.Client(
+        transport=httpx2.MockTransport(lambda r: next(responses))
     ) as c:
         assert fetch_sgs(c, 12, D(2026, 10, 1), D(2026, 10, 1), backoff=0) == {
             D(2026, 10, 1): 0.05
         }
 
     with (
-        httpx.Client(
-            transport=httpx.MockTransport(
-                lambda r: httpx.Response(502, text="<html>")
+        httpx2.Client(
+            transport=httpx2.MockTransport(
+                lambda r: httpx2.Response(502, text="<html>")
             )
         ) as c,
         pytest.raises(SourceError, match="SGS series 12"),
@@ -101,7 +101,7 @@ def test_focus_uses_latest_survey(server):
 def test_focus_query(server):
     with server.client() as c:
         fetch_focus_ipca(c, D(2026, 10, 5))
-    url = httpx.URL(server.calls[0])
+    url = httpx2.URL(server.calls[0])
     query_filter = url.params["$filter"]
     assert "Indicador eq 'IPCA'" in query_filter
     assert "baseCalculo eq 0" in query_filter
@@ -124,15 +124,15 @@ def test_focus_skips_malformed_rows():
 @pytest.mark.parametrize(
     "response",
     [
-        httpx.Response(500, text="error"),
-        httpx.Response(200, text="<html>"),
-        httpx.Response(200, json={"value": []}),
-        httpx.Response(200, json={"unexpected": True}),
+        httpx2.Response(500, text="error"),
+        httpx2.Response(200, text="<html>"),
+        httpx2.Response(200, json={"value": []}),
+        httpx2.Response(200, json={"unexpected": True}),
     ],
 )
 def test_focus_failure_becomes_source_error(response):
     with (
-        httpx.Client(transport=httpx.MockTransport(lambda r: response)) as c,
+        httpx2.Client(transport=httpx2.MockTransport(lambda r: response)) as c,
         pytest.raises(SourceError, match="Focus"),
     ):
         fetch_focus_ipca(c, D(2026, 10, 5))
@@ -266,14 +266,14 @@ def test_resgatar_walks_unknown_groups():
 @pytest.mark.parametrize(
     "response",
     [
-        httpx.Response(403, text="blocked"),
-        httpx.Response(200, text="<html>"),
-        httpx.Response(200, json={}),
+        httpx2.Response(403, text="blocked"),
+        httpx2.Response(200, text="<html>"),
+        httpx2.Response(200, json={}),
     ],
 )
 def test_resgatar_failure_becomes_source_error(response):
     with (
-        httpx.Client(transport=httpx.MockTransport(lambda r: response)) as c,
+        httpx2.Client(transport=httpx2.MockTransport(lambda r: response)) as c,
         pytest.raises(SourceError),
     ):
         fetch_resgatar(c)
@@ -281,10 +281,10 @@ def test_resgatar_failure_becomes_source_error(response):
 
 def test_resgatar_timeout_becomes_source_error():
     def time_out(request):
-        raise httpx.ConnectTimeout("timeout", request=request)
+        raise httpx2.ConnectTimeout("timeout", request=request)
 
     with (
-        httpx.Client(transport=httpx.MockTransport(time_out)) as c,
+        httpx2.Client(transport=httpx2.MockTransport(time_out)) as c,
         pytest.raises(SourceError),
     ):
         fetch_resgatar(c)

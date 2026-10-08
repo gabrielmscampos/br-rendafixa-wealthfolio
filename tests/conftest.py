@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from br_fixed_income.business_days import BusinessCalendar
@@ -18,7 +18,7 @@ def _parse_br_date(text: str) -> dt.date:
 
 
 class FakeServer:
-    """Simulates SGS, Focus, the Tesouro Transparente CSV and 'resgatar' via httpx.MockTransport."""
+    """Simulates SGS, Focus, the Tesouro Transparente CSV and 'resgatar' via httpx2.MockTransport."""
 
     def __init__(self) -> None:
         self.sgs: dict[int, dict[dt.date, float]] = {}
@@ -34,7 +34,7 @@ class FakeServer:
         )
         self.calls: list[str] = []
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         self.calls.append(url)
         m = re.search(r"bcdata\.sgs\.(\d+)/dados", url)
@@ -47,7 +47,7 @@ class FakeServer:
                 if start <= d <= end
             ]
             if not values:
-                return httpx.Response(
+                return httpx2.Response(
                     404,
                     json={
                         "erro": {
@@ -56,21 +56,21 @@ class FakeServer:
                         }
                     },
                 )
-            return httpx.Response(200, json=values)
+            return httpx2.Response(200, json=values)
         if "tesourotransparente" in url:
-            return httpx.Response(200, text=self.tesouro_csv)
+            return httpx2.Response(200, text=self.tesouro_csv)
         if "resgatar" in url:
             if isinstance(self.resgatar, int):
-                return httpx.Response(self.resgatar, text="error")
-            return httpx.Response(200, json=self.resgatar)
+                return httpx2.Response(self.resgatar, text="error")
+            return httpx2.Response(200, json=self.resgatar)
         if "olinda" in url:
             if isinstance(self.focus, int):
-                return httpx.Response(self.focus, text="error")
-            return httpx.Response(200, json=self.focus)
-        return httpx.Response(404)
+                return httpx2.Response(self.focus, text="error")
+            return httpx2.Response(200, json=self.focus)
+        return httpx2.Response(404)
 
-    def client(self) -> httpx.Client:
-        return httpx.Client(transport=httpx.MockTransport(self))
+    def client(self) -> httpx2.Client:
+        return httpx2.Client(transport=httpx2.MockTransport(self))
 
     def count(self, fragment: str) -> int:
         return sum(fragment in u for u in self.calls)

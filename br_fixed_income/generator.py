@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 
 from .bonds import Bond
 from .business_days import BusinessCalendar
@@ -43,7 +43,7 @@ class DataSources:
 
     def __init__(
         self,
-        client: httpx.Client,
+        client: httpx2.Client,
         bonds: Sequence[Bond],
         until: dt.date,
         use_resgatar: bool = True,

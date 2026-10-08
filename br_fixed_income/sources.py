@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
 
-import httpx
+import httpx2
 
 from .logger import logger
 from .tesouro_map import normalize_name, strip_year
@@ -53,10 +53,10 @@ class SourceError(Exception):
     pass
 
 
-def new_client() -> httpx.Client:
-    return httpx.Client(
+def new_client() -> httpx2.Client:
+    return httpx2.Client(
         headers={"User-Agent": USER_AGENT},
-        timeout=httpx.Timeout(30.0),
+        timeout=httpx2.Timeout(30.0),
         follow_redirects=True,
     )
 
@@ -71,7 +71,7 @@ def _parse_br_date(text: str) -> dt.date:
 
 
 def fetch_sgs(
-    client: httpx.Client,
+    client: httpx2.Client,
     series: int,
     start: dt.date,
     end: dt.date,
@@ -100,7 +100,7 @@ def fetch_sgs(
 
 
 def _fetch_sgs_window(
-    client: httpx.Client,
+    client: httpx2.Client,
     series: int,
     start: dt.date,
     end: dt.date,
@@ -117,7 +117,7 @@ def _fetch_sgs_window(
         try:
             resp = client.get(url)
             body = resp.json()
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             last_error = f"{type(e).__name__}: {e}"
         except ValueError:
             last_error = f"HTTP {resp.status_code}, response is not JSON"
@@ -144,7 +144,7 @@ def _fetch_sgs_window(
 
 
 def fetch_ipca(
-    client: httpx.Client, start: dt.date, end: dt.date, **kwargs: Any
+    client: httpx2.Client, start: dt.date, end: dt.date, **kwargs: Any
 ) -> dict[dt.date, float]:
     """Monthly IPCA (% per month), keyed by the first day of the reference month."""
     start = start.replace(day=1)
@@ -162,7 +162,7 @@ def fetch_ipca(
 
 
 def fetch_focus_ipca(
-    client: httpx.Client, as_of: dt.date
+    client: httpx2.Client, as_of: dt.date
 ) -> dict[dt.date, float]:
     """Monthly IPCA expectations (median, % per month) from the latest Focus
     survey on or before `as_of`, keyed by the first day of the reference month.
@@ -185,7 +185,7 @@ def fetch_focus_ipca(
         resp = client.get(url)
         resp.raise_for_status()
         rows = resp.json()["value"]
-    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+    except (httpx2.HTTPError, ValueError, KeyError, TypeError) as e:
         raise SourceError(
             f"failed to query the Focus survey (IPCA expectations): {e}"
         ) from None
@@ -260,7 +260,7 @@ class TesouroPrices:
 
 
 def download_tesouro_csv(
-    client: httpx.Client,
+    client: httpx2.Client,
     cache: Path | None = None,
     max_age: dt.timedelta = dt.timedelta(hours=6),
 ) -> str:
@@ -275,10 +275,10 @@ def download_tesouro_csv(
     logger.info("Downloading the Tesouro Transparente price CSV...")
     try:
         resp = client.get(
-            TESOURO_CSV_URL, timeout=httpx.Timeout(30.0, read=180.0)
+            TESOURO_CSV_URL, timeout=httpx2.Timeout(30.0, read=180.0)
         )
         resp.raise_for_status()
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         raise SourceError(
             f"failed to download the Tesouro Transparente CSV: {e}"
         ) from None
@@ -365,13 +365,13 @@ class RedemptionPrice:
 
 
 def fetch_resgatar(
-    client: httpx.Client, timeout: float = 10.0
+    client: httpx2.Client, timeout: float = 10.0
 ) -> list[RedemptionPrice]:
     try:
         resp = client.get(RESGATAR_URL, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-    except (httpx.HTTPError, ValueError) as e:
+    except (httpx2.HTTPError, ValueError) as e:
         raise SourceError(
             f"failed to query Tesouro Direto's 'resgatar': {e}"
         ) from None

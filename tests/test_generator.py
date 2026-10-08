@@ -1,6 +1,6 @@
 import datetime as dt
 
-import httpx
+import httpx2
 import pytest
 
 from br_fixed_income.bonds import Bond
@@ -171,11 +171,11 @@ def test_source_failure_propagates_and_is_remembered(cal, monkeypatch):
 
     def fail(request):
         calls.append(request)
-        return httpx.Response(500, text="<html>")
+        return httpx2.Response(500, text="<html>")
 
     today = D(2026, 10, 6)
     a, b = _bank("CDI"), _bank("CDI", purchase_date=D(2026, 9, 2))
-    with httpx.Client(transport=httpx.MockTransport(fail)) as c:
+    with httpx2.Client(transport=httpx2.MockTransport(fail)) as c:
         data = DataSources(c, [a, b], today)
         for bond in (a, b):
             with pytest.raises(SourceError, match="SGS series 12"):
