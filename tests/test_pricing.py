@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 
 from br_fixed_income.pricing import (
+    ACCRUAL_ANNIVERSARY,
     SOURCE_RESGATAR,
     SOURCE_TESOURO_CSV,
     PricingError,
@@ -189,6 +190,78 @@ def test_ipca_published_month_ignores_focus(cal):
     )
     assert series.quotes[-1].price == pytest.approx(1000 * 1.0088, rel=1e-12)
     assert series.warnings == []
+
+
+def test_ipca_anniversary_full_period_uses_start_month(cal):
+    # 03-16 -> 04-16 is one complete period and accrues all of March's IPCA.
+    start, t = D(2026, 3, 16), D(2026, 4, 16)
+    f, _ = ipca_factor(start, t, IPCA, 0, cal, accrual=ACCRUAL_ANNIVERSARY)
+    assert f == pytest.approx(1.0088, rel=1e-12)
+
+
+def test_ipca_anniversary_pro_rata_by_business_days(cal):
+    start, t = D(2026, 3, 16), D(2026, 4, 30)
+    f, _ = ipca_factor(start, t, IPCA, 0, cal, accrual=ACCRUAL_ANNIVERSARY)
+    a, b = D(2026, 4, 16), D(2026, 5, 16)
+    assert f == pytest.approx(
+        1.0088 * 1.0067 ** (cal.bd(a, t) / cal.bd(a, b)), rel=1e-12
+    )
+
+
+def test_ipca_anniversary_lag_shifts_the_month(cal):
+    start, t = D(2026, 3, 16), D(2026, 4, 16)
+    f, _ = ipca_factor(start, t, IPCA, 1, cal, accrual=ACCRUAL_ANNIVERSARY)
+    assert f == pytest.approx(1.0070, rel=1e-12)
+
+
+def test_ipca_anniversary_day_clamped_to_month_end(cal):
+    # Anniversaries of 01-31: 02-28, 03-31, 04-30.
+    ipca = {D(2026, 1, 1): 0.33, **IPCA}
+    start = D(2026, 1, 31)
+    t = D(2026, 3, 10)
+    f, _ = ipca_factor(start, t, ipca, 0, cal, accrual=ACCRUAL_ANNIVERSARY)
+    a, b = D(2026, 2, 28), D(2026, 3, 31)
+    assert f == pytest.approx(
+        1.0033 * 1.0070 ** (cal.bd(a, t) / cal.bd(a, b)), rel=1e-12
+    )
+
+
+def test_ipca_anniversary_matches_bank_statement(cal):
+    # LCA IPCA + 7.33% held from 2025-05-21 to maturity on 2026-05-21; the
+    # BTG statement shows 1120.434076. SGS 433 rounds IPCA to two decimals,
+    # which may explain the remaining difference.
+    ipca = {
+        D(2025, 5, 1): 0.26,
+        D(2025, 6, 1): 0.24,
+        D(2025, 7, 1): 0.26,
+        D(2025, 8, 1): -0.11,
+        D(2025, 9, 1): 0.48,
+        D(2025, 10, 1): 0.09,
+        D(2025, 11, 1): 0.18,
+        D(2025, 12, 1): 0.33,
+        D(2026, 1, 1): 0.33,
+        D(2026, 2, 1): 0.70,
+        D(2026, 3, 1): 0.88,
+        D(2026, 4, 1): 0.67,
+        D(2026, 5, 1): 0.58,
+    }
+    series = ipca_series(
+        1000,
+        7.33,
+        ipca,
+        0,
+        D(2025, 5, 21),
+        D(2026, 5, 21),
+        cal,
+        accrual=ACCRUAL_ANNIVERSARY,
+    )
+    assert series.quotes[-1].price == pytest.approx(1120.434076, abs=0.01)
+    assert series.warnings == []
+
+
+def test_ipca_unknown_accrual_is_an_error(cal):
+    with pytest.raises(PricingError, match="accrual"):
+        ipca_factor(D(2026, 3, 2), D(2026, 4, 1), IPCA, 0, cal, accrual="x")
 
 
 # --- Tesouro -------------------------------------------------------------
