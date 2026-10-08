@@ -30,9 +30,9 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked --all-groups
-      - run: uv run ruff check br_fixed_income tests
-      - run: uv run ruff format --check br_fixed_income tests
-      - run: uv run mypy br_fixed_income tests
+      - run: uv run ruff check br_fixed_income rest_api tests
+      - run: uv run ruff format --check br_fixed_income rest_api tests
+      - run: uv run mypy br_fixed_income rest_api tests
 
   tests:
     name: Tests (Python ${{ matrix.python-version }})
