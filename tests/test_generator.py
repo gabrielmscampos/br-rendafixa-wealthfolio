@@ -223,7 +223,20 @@ def test_ipca_fetches_lagged_months(server, cal):
     server.sgs[433] = {D(2026, 7, 1): 0.07, D(2026, 8, 1): -0.32}
     b = _bank("IPCA", rate=8, purchase_date=D(2026, 9, 1), ipca_lag=2)
     series = _build(server, cal, b, until=D(2026, 10, 6))
-    assert "dataInicial=01/07/2026" in server.calls[0]
+    # Sep minus 2 months of lag minus 3 months of lookback.
+    assert "dataInicial=01/04/2026" in server.calls[0]
     assert (
         series.warnings == []
     )  # Sep and Oct use Jul and Aug, already published
+
+
+def test_ipca_purchase_in_unpublished_month(server, cal):
+    # Bought in September, before its IPCA is published: the series still
+    # works by projecting from August, the last published month.
+    server.sgs[433] = {D(2026, 7, 1): 0.07, D(2026, 8, 1): -0.32}
+    b = _bank("IPCA", rate=8, purchase_date=D(2026, 9, 1))
+    series = _build(server, cal, b, until=D(2026, 10, 6))
+    assert series.quotes[-1].date == D(2026, 10, 6)
+    assert series.warnings == [
+        "IPCA projected (last published) for 09/2026, 10/2026"
+    ]

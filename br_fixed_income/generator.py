@@ -34,6 +34,9 @@ from .sources import (
 )
 
 
+IPCA_LOOKBACK_MONTHS = 3
+
+
 class DataSources:
     """Loads sources on demand, covering the range of all bonds in one go."""
 
@@ -76,8 +79,11 @@ class DataSources:
         )
 
     def ipca(self) -> dict[dt.date, float]:
+        # Start a few months early so the last published IPCA is known even
+        # when the first month a bond needs is not published yet; without it
+        # there is nothing to project from.
         start = min(
-            add_months(b.purchase_date, -b.ipca_lag)
+            add_months(b.purchase_date, -b.ipca_lag - IPCA_LOOKBACK_MONTHS)
             for b in self.bonds
             if b.type == "IPCA"
         )
