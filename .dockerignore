@@ -1,0 +1,8 @@
+# Allowlist: the image needs only the lockfile and the two packages.
+# bonds.yaml and the CSVs are mounted at runtime, never baked in.
+*
+!pyproject.toml
+!uv.lock
+!br_fixed_income/
+!rest_api/
+**/__pycache__
