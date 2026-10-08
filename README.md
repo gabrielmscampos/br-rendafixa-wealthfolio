@@ -120,7 +120,7 @@ symbol,date,open,high,low,close,volume,currency
 CDB626FG7PK,2026-06-30,1000.000000,1000.000000,1000.000000,1000.000000,0,BRL
 ```
 
-`open`, `high` and `low` repeat `close`; `volume` is 0. The `currency` column is needed: without it Wealthfolio assumes USD. The `symbol` must match the symbol of the registered asset. If a Wealthfolio version requires another layout, adjust `COLUMNS` and `_row()` in `fixed_income/output.py`.
+`open`, `high` and `low` repeat `close`; `volume` is 0. The `currency` column is needed: without it Wealthfolio assumes USD. The `symbol` must match the symbol of the registered asset. If a Wealthfolio version requires another layout, adjust `COLUMNS` and `_row()` in `br_fixed_income/output.py`.
 
 Wealthfolio already creates a manual quote for every buy and sell with a price. For Tesouro, the CSV quote on the purchase date (`PU Venda`) is slightly lower than the price paid, because of the spread. On import, quotes with the same symbol and date overwrite existing ones. Use `--skip-purchase-date` if you prefer to keep the trade price.
 
@@ -133,9 +133,9 @@ uv run pytest -m integration    # real calls to SGS, Focus, Tesouro Transparente
 
 The integration tests check the Tesouro prices against the official CSV and the CDI CDBs against the BTG statement of 2026-10-05 (R$ 0.01 tolerance).
 
-## Open point: date of the `resgatar` price
+## Date of the `resgatar` price
 
-The `resgatar` price is stored on the `startDate` date. On 2026-10-06 the evidence supported this choice: `resgatar` had LTN 2032 at R$ 533.66, different from the CSV's `PU Venda Manha` for 10-05 (R$ 527.53), and Tesouro Selic 2028 already carried one day of interest over the CSV value. The final confirmation is checking that the CSV published later shows R$ 533.66 as the `PU Venda Manha` of LTN 2032 on 2026-10-06.
+The `resgatar` price is stored on the `startDate` date. This was confirmed against the official CSV: the prices `resgatar` returned on 2026-10-06 (LTN 2032 R$ 533.66, Tesouro IPCA+ 2029 R$ 3,988.69, Tesouro Selic 2028 R$ 20,015.51) are exactly the `PU Venda Manha` the CSV later published for 2026-10-06.
 
 The Tesouro Direto website states in `robots.txt` that it does not allow automated access. The script makes at most one call per run; use `--no-tesouro-api` to turn it off.
 

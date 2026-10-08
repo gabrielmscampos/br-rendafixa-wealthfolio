@@ -387,8 +387,8 @@ def parse_resgatar(data: Any) -> list[RedemptionPrice]:
     for item in _named_items(data):
         try:
             price = float(item["unitaryRedemptionValue"])
-            # The price is for the session in startDate: on 2026-10-06 Tesouro Selic
-            # already carried one day of interest over the CSV's PU Venda for 10-05.
+            # The price is for the session in startDate: the values returned on
+            # 2026-10-06 match the PU Venda Manha the CSV later published for 10-06.
             # Tesouro24x7 items have no startDate; there lastMarketPricingDate is the current day.
             date = dt.datetime.fromisoformat(
                 item.get("startDate") or item["lastMarketPricingDate"]
