@@ -1,6 +1,11 @@
 # Brazilian fixed income quotes for Wealthfolio
 
-Command line script that generates historical quote CSVs for Brazilian fixed income bonds, to be imported manually into [Wealthfolio](https://wealthfolio.app) for assets with manual quotes.
+Generates historical quotes for Brazilian fixed income bonds for [Wealthfolio](https://wealthfolio.app), in two ways:
+
+- a **command line script** that writes CSVs to import manually, for assets with manual quotes;
+- a **REST API** that Wealthfolio queries automatically as a custom market data source (see [REST API](#rest-api)).
+
+Prices cover:
 
 - **Tesouro Direto**: market price (`PU Venda Manha`) from the official Tesouro Transparente CSV, plus the current day's price from the `resgatar` endpoint of the Tesouro Direto website.
 - **Bank bonds priced on the curve** (CDB, LCI, LCA etc.): fixed rate (`PRE`), % of CDI (`CDI`), % of Selic (`SELIC`) and IPCA + rate (`IPCA`), computed from the purchase price with Banco Central data (SGS, and optionally the Focus survey for unpublished IPCA months).
@@ -140,7 +145,7 @@ Behavior:
 - The series runs from `purchase_date` to `min(today, maturity, end_date)`, on business days only (ANBIMA/B3 calendar). There are never future dates: to update, run it again.
 - CDI and Selic: a day's price uses the rates up to the previous business day. If the BCB has not yet published yesterday's rate, the series ends on the last day that can be computed.
 - IPCA: a month without a published IPCA is projected, by repeating the last published IPCA or, with `use_focus_survey: true`, from the Focus survey, with a warning (see [Calibrating IPCA](#calibrating-ipca)).
-- Tesouro: the Tesouro Transparente CSV (about 14 MB) is cached for 6 hours in `~/.cache/br-rendafixa-wealthfolio-generator/`. Today's price comes from `resgatar` (one call per run); any failure there is tolerated and the CSV always takes precedence. Tesouro Direto publishes no prices on 12-24 and 12-31, hence the warning about days without a price on those dates.
+- Tesouro: the Tesouro Transparente CSV (about 14 MB) is cached for 6 hours in `~/.cache/br-rendafixa-wealthfolio/`. Today's price comes from `resgatar` (one call per run); any failure there is tolerated and the CSV always takes precedence. Tesouro Direto publishes no prices on 12-24 and 12-31, hence the warning about days without a price on those dates.
 
 ## Importing into Wealthfolio
 
@@ -158,10 +163,99 @@ CDB626FG7PK,2026-06-30,1000.000000,1000.000000,1000.000000,1000.000000,0,BRL
 
 Wealthfolio already creates a manual quote for every buy and sell with a price. For Tesouro, the CSV quote on the purchase date (`PU Venda`) is slightly lower than the price paid, because of the spread. On import, quotes with the same symbol and date overwrite existing ones. Use `--skip-purchase-date` if you prefer to keep the trade price.
 
+## REST API
+
+The `rest_api` package serves the same quotes over HTTP, so Wealthfolio fetches them by itself as a **custom market data source**. It reads `bonds.yaml`, computes every series right away and then on a schedule (every 6 hours by default), and serves each bond as a CSV. It runs alongside Wealthfolio in the same docker-compose stack.
+
+- `bonds.yaml` is read again on every refresh: add or edit a bond and it shows up on the next refresh, with no restart.
+- If a source fails during a refresh, the API keeps serving that bond's last good series and reports the error in `/bonds`.
+- The CSVs are also written to `OUTPUT_DIR` on every refresh, as a backup and for manual imports.
+
+### Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /quotes/{symbol}.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` | The bond's quotes in the [CSV format above](#importing-into-wealthfolio), optionally filtered by date. `503` until the first refresh finishes, `404` for a symbol not in `bonds.yaml`. |
+| `GET /bonds` | Per bond: rows, first and last date, last price, source, warnings and the error of the latest refresh, if any. |
+| `GET /health` | `status` (`starting` until the first refresh, then `ok`), time and error of the last refresh. |
+| `POST /refresh` | Recomputes now instead of waiting for the schedule (`409` if a refresh is already running). |
+
+Interactive documentation is at `/docs`. The API has no authentication: keep it on the compose network and do not publish its port to the internet.
+
+### Configuration
+
+Environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BONDS_FILE` | `bonds.yaml` (`/data/bonds.yaml` in the image) | Bonds file. |
+| `OUTPUT_DIR` | `quotes` (`/data/quotes` in the image) | Where the CSVs are written on each refresh. Empty disables writing. |
+| `REFRESH_INTERVAL_MINUTES` | `360` | Time between refreshes. CDI and Selic are published once a day and the Tesouro CSV once a day, so a few hours is plenty. |
+| `USE_TESOURO_API` | `true` | Query Tesouro Direto's `resgatar` for today's price (one call per refresh). |
+| `HOST`, `PORT` | `127.0.0.1`, `8000` (`0.0.0.0` in the image) | Listening address. |
+| `XDG_CACHE_HOME` | `~/.cache` (`/tmp/cache` in the image) | Where the Tesouro CSV is cached. |
+
+Dates use Brasília time (UTC-3) regardless of the machine's time zone, so a container on UTC never produces quotes dated "tomorrow" in the evening.
+
+### Running
+
+Locally:
+
+```sh
+uv sync --group rest_api
+uv run python -m rest_api
+```
+
+With docker-compose, next to Wealthfolio (adjust the paths to where this repository lives):
+
+```yaml
+services:
+  # wealthfolio:
+  #   ...your existing Wealthfolio service...
+
+  bonds-api:
+    build: ./br-rendafixa-wealthfolio
+    restart: unless-stopped
+    volumes:
+      - ./bonds.yaml:/data/bonds.yaml:ro
+      - bonds-quotes:/data/quotes
+    # environment:
+    #   REFRESH_INTERVAL_MINUTES: "360"
+
+volumes:
+  bonds-quotes:
+```
+
+No `ports:` entry is needed: Wealthfolio reaches the API by its service name on the compose network. The image runs as a non-root user and has a health check on `/health`. To copy the generated CSVs out of the volume: `docker compose cp bonds-api:/data/quotes ./quotes`.
+
+### Setting up Wealthfolio
+
+1. In **Settings > Market Data**, choose **Add custom provider** and create one (for example, code `br-fixed-income`) with a single **historical** source:
+   - Format: **CSV**
+   - URL: `http://bonds-api:8000/quotes/{SYMBOL}.csv?from={FROM}&to={TO}`
+   - Price column: `close`
+   - Date column: `date`
+
+   No "latest" source is needed: without one, Wealthfolio takes the most recent row of the historical source.
+2. For each bond, open the security's market data settings, set the quote mode to market (automatic) and choose this custom provider. The security's symbol must be the `symbol` in `bonds.yaml`.
+
+Wealthfolio then syncs the bonds' prices on its own, like any other security.
+
+### Retiring the API
+
+Once every bond has reached maturity (or `end_date`) and you are not buying new ones, the API only keeps returning the same final prices, so it can be turned off:
+
+1. Make sure a refresh ran after the last maturity, so Wealthfolio already has the final prices (`GET /bonds` shows each bond's `last_date`).
+2. In Wealthfolio, switch each security's quote mode to **Manual**. Switching only stops the syncing: the quotes already fetched from the API stay in Wealthfolio.
+3. Disable or delete the custom provider in **Settings > Market Data**.
+4. Remove the `bonds-api` service from the compose file (optionally copy the CSVs out of the volume first, as a backup).
+
+If you buy new bonds later, add the service back, add them to `bonds.yaml` and assign the new securities to the custom provider.
+
 ## Tests
 
 ```sh
-uv run pytest                   # unit tests, no network
+uv run pytest                   # unit tests, no network (API tests need the rest_api group)
 uv run pytest -m integration    # real calls to SGS, Focus, Tesouro Transparente and resgatar
 ```
 
