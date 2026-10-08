@@ -9,6 +9,7 @@ from br_fixed_income.sources import (
     SERIES_CDI,
     SERIES_SELIC,
     download_tesouro_csv,
+    fetch_focus_ipca,
     fetch_ipca,
     fetch_resgatar,
     fetch_sgs,
@@ -65,6 +66,13 @@ def test_real_tesouro_csv(tesouro_csv, name, maturity, date, pu_venda):
         )[date]
         == pu_venda
     )
+
+
+def test_real_focus_survey(client):
+    # Latest survey on or before 2026-10-05 is the one of 2026-10-02.
+    expectations = fetch_focus_ipca(client, D(2026, 10, 5))
+    assert expectations[D(2026, 9, 1)] == 0.6
+    assert D(2026, 10, 1) in expectations
 
 
 def test_real_resgatar(client):

@@ -24,6 +24,7 @@ FIELDS = {
     "purchase_date",
     "end_date",
     "ipca_lag",
+    "use_focus_survey",
 }
 
 
@@ -43,6 +44,7 @@ class Bond:
     tesouro_bond: str | None = None
     end_date: dt.date | None = None
     ipca_lag: int = 0
+    use_focus_survey: bool = False
 
     @property
     def tesouro_name(self) -> str:
@@ -178,6 +180,18 @@ def _validate_item(item: Any, i: int, today: dt.date) -> Bond:
         if isinstance(v, bool) or not isinstance(v, int) or v < 0:
             raise error("ipca_lag", f"must be an integer >= 0 (got: {v!r})")
         kwargs["ipca_lag"] = v
+
+    if item.get("use_focus_survey") is not None:
+        if kind != "IPCA":
+            raise error(
+                "use_focus_survey", "only applies to bonds of type IPCA"
+            )
+        v = item["use_focus_survey"]
+        if not isinstance(v, bool):
+            raise error(
+                "use_focus_survey", f"must be true or false (got: {v!r})"
+            )
+        kwargs["use_focus_survey"] = v
 
     return Bond(
         symbol=symbol,

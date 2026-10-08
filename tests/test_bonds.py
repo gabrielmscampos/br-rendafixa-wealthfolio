@@ -50,6 +50,9 @@ def test_example_loads():
         (_cdi(type="TESOURO"), "tesouro_bond"),
         (_cdi(type="TESOURO", tesouro_bond="LTN"), "tesouro_bond"),
         (_cdi(type="IPCA", ipca_lag=-1), "ipca_lag"),
+        (_cdi(use_focus_survey=True), "use_focus_survey"),
+        (_cdi(type="IPCA", use_focus_survey="yes"), "use_focus_survey"),
+        (_cdi(type="IPCA", use_focus_survey=1), "use_focus_survey"),
     ],
 )
 def test_validation_names_bond_and_field(item, field):
@@ -57,6 +60,14 @@ def test_validation_names_bond_and_field(item, field):
         validate_bonds({"bonds": [item]}, TODAY)
     assert f"'{field}'" in str(e.value)
     assert "#1" in str(e.value)
+
+
+def test_use_focus_survey():
+    (b,) = validate_bonds({"bonds": [_cdi(type="IPCA")]}, TODAY)
+    assert b.use_focus_survey is False
+    item = _cdi(type="IPCA", use_focus_survey=True)
+    (b,) = validate_bonds({"bonds": [item]}, TODAY)
+    assert b.use_focus_survey is True
 
 
 def test_unique_symbol():

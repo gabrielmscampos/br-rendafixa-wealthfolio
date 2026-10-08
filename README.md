@@ -3,7 +3,7 @@
 Command line script that generates historical quote CSVs for Brazilian fixed income bonds, to be imported manually into [Wealthfolio](https://wealthfolio.app) for assets with manual quotes.
 
 - **Tesouro Direto**: market price (`PU Venda Manha`) from the official Tesouro Transparente CSV, plus the current day's price from the `resgatar` endpoint of the Tesouro Direto website.
-- **Bank bonds priced on the curve** (CDB, LCI, LCA etc.): fixed rate (`PRE`), % of CDI (`CDI`), % of Selic (`SELIC`) and IPCA + rate (`IPCA`), computed from the purchase price with Banco Central data (SGS).
+- **Bank bonds priced on the curve** (CDB, LCI, LCA etc.): fixed rate (`PRE`), % of CDI (`CDI`), % of Selic (`SELIC`) and IPCA + rate (`IPCA`), computed from the purchase price with Banco Central data (SGS, and optionally the Focus survey for unpublished IPCA months).
 
 All prices are gross of income tax. Bonds with periodic interest payments are not supported.
 
@@ -47,6 +47,7 @@ cp bonds.example.yaml bonds.yaml
 | `purchase_date` | yes | First purchase; the series starts here. |
 | `end_date` | no | Ends the series before maturity (e.g. issuer liquidation, payout by the FGC). |
 | `ipca_lag` | no | `IPCA` only: index lag in months (default 0). With lag N, each month accrues the IPCA of N months earlier. See [Calibrating IPCA](#calibrating-ipca). |
+| `use_focus_survey` | no | `IPCA` only: `true` to project unpublished IPCA months with the BCB Focus survey median instead of repeating the last published IPCA (default `false`). See [Calibrating IPCA](#calibrating-ipca). |
 
 Tesouro codes and broker acronyms: `PRE` = LTN, `PREJ` = NTN-F, `IPCA` = NTN-B Principal, `IPCAJ` = NTN-B, `SELIC` = LFT, `IGPMJ` = NTN-C.
 
@@ -54,16 +55,28 @@ For Tesouro, use one symbol per bond, even with several purchases. For bank bond
 
 ### Calibrating IPCA
 
-Banks use different IPCA conventions. Run with `--check --until <statement date>` and compare the last price with the "Preço R$" column of your broker statement, varying `ipca_lag`. Differences of a few reais are expected. For the Pine CDB in the example, `ipca_lag: 1` came within about R$ 1.30 of the BTG statement of 2026-10-05.
+Banks use different IPCA conventions. Run with `--check --until <statement date>` and compare the last price with the "Preço R$" column of your broker statement, varying `ipca_lag` and `use_focus_survey`. Differences of a few reais are expected. For the Pine CDB in the example, against the BTG statement of 2026-10-05 (R$ 1,037.88):
+
+| Setting | Price | Difference |
+|---|---|---|
+| `ipca_lag: 0` | 1,026.90 | -10.98 |
+| `ipca_lag: 0`, `use_focus_survey: true` | 1,037.01 | -0.87 |
+| `ipca_lag: 1` | 1,036.45 | -1.43 |
+| `ipca_lag: 1`, `use_focus_survey: true` | 1,037.36 | -0.52 |
 
 How the IPCA factor is built: each calendar month between the purchase date and the quote date contributes `(1 + IPCA / 100)`, prorated by business days in the first and last month. With `ipca_lag: N`, a month uses the IPCA of N months earlier (with `ipca_lag: 1`, October accrues September's IPCA).
 
-IPCA projection: IBGE publishes each month's IPCA around the 10th of the following month, so the most recent months are usually not published yet. For those, the script repeats the **last published IPCA**. This is a plain repeat, not a forecast, and the summary table lists the affected months in a warning such as `IPCA projected (last published) for 09/2026, 10/2026`. Keep in mind:
+IPCA projection: IBGE publishes each month's IPCA around the 10th of the following month, so the most recent months are usually not published yet. Those months are projected in one of two ways, and the summary table lists them in a warning:
+
+- **Default:** repeat the **last published IPCA**. This is a plain repeat, not a forecast. Warning: `IPCA projected (last published) for 09/2026, 10/2026`.
+- **`use_focus_survey: true`:** use the median IPCA expectation for that month from the BCB [Focus survey](https://www.bcb.gov.br/publicacoes/focus) (30-day respondent base, as in the weekly Focus report), taken from the latest survey on or before `--until`. So with an old `--until` you get the forecast as it stood on that date. Warning: `IPCA projected (Focus survey median) for 09/2026, 10/2026`. If the survey cannot be fetched or has no figure for a month, that month falls back to repeating the last published IPCA, with a log warning.
+
+Keep in mind:
 
 - With `ipca_lag: 0`, the current month and often the previous one are projected. A higher lag needs fewer projected months.
 - Prices on projected months are provisional. Running the script again after IBGE publishes replaces the projection with the real figure, including in the history.
-- An unusual last print distorts recent prices. For example, repeating a deflation month (such as -0.32%) makes the price lower than a bank would show.
-- Banks and brokers usually use a forecast for the current month, such as ANBIMA's IPCA projection or the BCB Focus survey median. For a more reliable calibration, compare against an older statement once IBGE has published the months it covers, so the script's projection is not part of the difference.
+- Without the Focus survey, an unusual last print distorts recent prices. For example, repeating a deflation month (such as -0.32%) makes the price lower than a bank would show.
+- Banks and brokers usually use a forecast for the current month, such as ANBIMA's IPCA projection or the Focus survey median, which is why `use_focus_survey: true` tends to get closer to the statement.
 
 ## Running
 
@@ -92,7 +105,7 @@ Behavior:
 
 - The series runs from `purchase_date` to `min(today, maturity, end_date)`, on business days only (ANBIMA/B3 calendar). There are never future dates: to update, run it again.
 - CDI and Selic: a day's price uses the rates up to the previous business day. If the BCB has not yet published yesterday's rate, the series ends on the last day that can be computed.
-- IPCA: a month without a published IPCA uses the last published IPCA as a projection, with a warning (see [Calibrating IPCA](#calibrating-ipca)).
+- IPCA: a month without a published IPCA is projected, by repeating the last published IPCA or, with `use_focus_survey: true`, from the Focus survey, with a warning (see [Calibrating IPCA](#calibrating-ipca)).
 - Tesouro: the Tesouro Transparente CSV (about 14 MB) is cached for 6 hours in `~/.cache/br-rendafixa-wealthfolio-generator/`. Today's price comes from `resgatar` (one call per run); any failure there is tolerated and the CSV always takes precedence. Tesouro Direto publishes no prices on 12-24 and 12-31, hence the warning about days without a price on those dates.
 
 ## Importing into Wealthfolio
@@ -115,7 +128,7 @@ Wealthfolio already creates a manual quote for every buy and sell with a price. 
 
 ```sh
 uv run pytest                   # unit tests, no network
-uv run pytest -m integration    # real calls to SGS, Tesouro Transparente and resgatar
+uv run pytest -m integration    # real calls to SGS, Focus, Tesouro Transparente and resgatar
 ```
 
 The integration tests check the Tesouro prices against the official CSV and the CDI CDBs against the BTG statement of 2026-10-05 (R$ 0.01 tolerance).

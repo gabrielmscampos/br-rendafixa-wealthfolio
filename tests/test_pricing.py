@@ -155,6 +155,42 @@ def test_ipca_missing_old_month_is_an_error(cal):
         ipca_series(1000, 0, IPCA, 0, D(2026, 1, 5), D(2026, 3, 2), cal)
 
 
+def test_ipca_unpublished_months_use_focus(cal):
+    focus = {D(2026, 5, 1): 0.40, D(2026, 6, 1): 0.30}
+    series = ipca_series(
+        1000, 0, IPCA, 0, D(2026, 4, 1), D(2026, 7, 1), cal, focus
+    )
+    assert series.quotes[-1].price == pytest.approx(
+        1000 * 1.0067 * 1.0040 * 1.0030, rel=1e-12
+    )
+    assert series.warnings == [
+        "IPCA projected (Focus survey median) for 05/2026, 06/2026"
+    ]
+
+
+def test_ipca_month_missing_from_focus_repeats_last_published(cal):
+    focus = {D(2026, 5, 1): 0.40}
+    series = ipca_series(
+        1000, 0, IPCA, 0, D(2026, 4, 1), D(2026, 7, 1), cal, focus
+    )
+    assert series.quotes[-1].price == pytest.approx(
+        1000 * 1.0067 * 1.0040 * 1.0067, rel=1e-12
+    )
+    assert series.warnings == [
+        "IPCA projected (Focus survey median) for 05/2026",
+        "IPCA projected (last published) for 06/2026",
+    ]
+
+
+def test_ipca_published_month_ignores_focus(cal):
+    focus = {D(2026, 3, 1): 5.0}
+    series = ipca_series(
+        1000, 0, IPCA, 0, D(2026, 3, 2), D(2026, 4, 1), cal, focus
+    )
+    assert series.quotes[-1].price == pytest.approx(1000 * 1.0088, rel=1e-12)
+    assert series.warnings == []
+
+
 # --- Tesouro -------------------------------------------------------------
 
 CSV = {

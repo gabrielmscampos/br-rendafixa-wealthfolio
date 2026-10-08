@@ -5,7 +5,7 @@ import pytest
 
 from br_fixed_income.bonds import Bond
 from br_fixed_income.generator import DataSources, build_series
-from br_fixed_income.pricing import SOURCE_RESGATAR, PricingError
+from br_fixed_income.pricing import SOURCE_RESGATAR, PricingError, ipca_series
 from br_fixed_income.sources import SERIES_CDI, SERIES_SELIC, SourceError
 
 
@@ -240,3 +240,62 @@ def test_ipca_purchase_in_unpublished_month(server, cal):
     assert series.warnings == [
         "IPCA projected (last published) for 09/2026, 10/2026"
     ]
+
+
+# --- Focus survey ---------------------------------------------------------
+
+PUBLISHED_IPCA = {D(2026, 7, 1): 0.07, D(2026, 8, 1): -0.32}
+
+
+def test_focus_survey_is_used_when_enabled(server, cal):
+    server.sgs[433] = PUBLISHED_IPCA
+    b = _bank("IPCA", rate=8, use_focus_survey=True)
+    series = _build(server, cal, b, until=D(2026, 10, 6))
+    expected = ipca_series(
+        1000,
+        8,
+        PUBLISHED_IPCA,
+        0,
+        D(2026, 9, 1),
+        D(2026, 10, 6),
+        cal,
+        {D(2026, 9, 1): 0.6, D(2026, 10, 1): 0.32, D(2026, 11, 1): 0.35},
+    )
+    assert series.quotes[-1].price == pytest.approx(expected.quotes[-1].price)
+    assert series.warnings == [
+        "IPCA projected (Focus survey median) for 09/2026, 10/2026"
+    ]
+
+
+def test_focus_survey_not_queried_when_disabled(server, cal):
+    server.sgs[433] = PUBLISHED_IPCA
+    series = _build(server, cal, _bank("IPCA", rate=8), until=D(2026, 10, 6))
+    assert server.count("olinda") == 0
+    assert series.warnings == [
+        "IPCA projected (last published) for 09/2026, 10/2026"
+    ]
+
+
+@pytest.mark.parametrize("response", [503, {"unexpected": True}])
+def test_focus_survey_failure_tolerated(server, cal, response):
+    server.sgs[433] = PUBLISHED_IPCA
+    server.focus = response
+    b = _bank("IPCA", rate=8, use_focus_survey=True)
+    series = _build(server, cal, b, until=D(2026, 10, 6))
+    assert series.warnings == [
+        "IPCA projected (last published) for 09/2026, 10/2026"
+    ]
+
+
+def test_focus_survey_one_call_per_run(server, cal):
+    server.sgs[433] = PUBLISHED_IPCA
+    a = _bank("IPCA", rate=8, use_focus_survey=True)
+    b = _bank(
+        "IPCA", rate=6, purchase_date=D(2026, 9, 2), use_focus_survey=True
+    )
+    until = D(2026, 10, 6)
+    with server.client() as c:
+        data = DataSources(c, [a, b], until)
+        build_series(a, data, cal, until, until)
+        build_series(b, data, cal, until, until)
+    assert server.count("olinda") == 1

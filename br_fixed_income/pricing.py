@@ -108,23 +108,31 @@ def percent_of_index_series(
 # --------------------------------------------------------------------------
 
 
+PROJECTION_FOCUS = "Focus survey median"
+PROJECTION_LAST = "last published"
+
+
 def ipca_factor(
     start: dt.date,
     t: dt.date,
     ipca: dict[dt.date, float],
     lag: int,
     cal: BusinessCalendar,
-) -> tuple[float, set[dt.date]]:
-    """Accumulated IPCA factor from start to t, and the months that used a projection.
+    expectations: dict[dt.date, float] | None = None,
+) -> tuple[float, dict[dt.date, str]]:
+    """Accumulated IPCA factor from start to t, and the projected months.
 
     Each calendar month overlapping [start, t) contributes
     (1 + ipca_m/100) ^ (elapsed_bd / month_bd), where ipca_m is the IPCA of the
     month shifted `lag` months back. Full months have exponent 1.
-    `ipca` is keyed by the first day of the reference month.
+    A month not yet published uses `expectations` (Focus survey) when it has
+    that month, and otherwise repeats the last published IPCA.
+    `ipca` and `expectations` are keyed by the first day of the month; the
+    returned dict maps each projected month to the method used.
     """
     last_month = max(ipca) if ipca else None
     factor = 1.0
-    projected: set[dt.date] = set()
+    projected: dict[dt.date, str] = {}
     month = _month_start(start)
     while month < t:
         next_month = add_months(month, 1)
@@ -134,8 +142,12 @@ def ipca_factor(
             if ref in ipca:
                 value = ipca[ref]
             elif last_month is not None and ref > last_month:
-                value = ipca[last_month]
-                projected.add(ref)
+                if expectations is not None and ref in expectations:
+                    value = expectations[ref]
+                    projected[ref] = PROJECTION_FOCUS
+                else:
+                    value = ipca[last_month]
+                    projected[ref] = PROJECTION_LAST
             else:
                 raise PricingError(f"IPCA for {ref:%m/%Y} not found")
             factor *= (1 + value / 100) ** (
@@ -153,14 +165,15 @@ def ipca_series(
     start: dt.date,
     end: dt.date,
     cal: BusinessCalendar,
+    expectations: dict[dt.date, float] | None = None,
 ) -> Series:
     """factor(t) = ipca_factor(start, t) * (1 + annual_rate/100) ^ (bd(start, t) / 252)."""
     base = 1 + annual_rate / 100
     source = f"SGS 433 (IPCA) + {annual_rate:g}% p.a."
     quotes = []
-    projected: set[dt.date] = set()
+    projected: dict[dt.date, str] = {}
     for d in cal.business_days(start, end):
-        f_ipca, proj = ipca_factor(start, d, ipca, lag, cal)
+        f_ipca, proj = ipca_factor(start, d, ipca, lag, cal, expectations)
         projected |= proj
         quotes.append(
             Quote(
@@ -170,9 +183,11 @@ def ipca_series(
             )
         )
     warnings = []
-    if projected:
-        months = ", ".join(f"{m:%m/%Y}" for m in sorted(projected))
-        warnings.append(f"IPCA projected (last published) for {months}")
+    for method in (PROJECTION_FOCUS, PROJECTION_LAST):
+        months = sorted(m for m, how in projected.items() if how == method)
+        if months:
+            listed = ", ".join(f"{m:%m/%Y}" for m in months)
+            warnings.append(f"IPCA projected ({method}) for {listed}")
     return Series(quotes, warnings)
 
 

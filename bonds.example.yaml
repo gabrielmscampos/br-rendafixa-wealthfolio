@@ -34,6 +34,8 @@ bonds:
     purchase_date: 2026-05-22
     purchase_price: 1000
     ipca_lag: 1                 # optional, months (default 0)
+    use_focus_survey: true      # optional (default false): project unpublished
+                                # IPCA months with the BCB Focus survey median
 
   # Other accepted formats:
   #

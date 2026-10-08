@@ -18,7 +18,7 @@ def _parse_br_date(text: str) -> dt.date:
 
 
 class FakeServer:
-    """Simulates SGS, the Tesouro Transparente CSV and 'resgatar' via httpx.MockTransport."""
+    """Simulates SGS, Focus, the Tesouro Transparente CSV and 'resgatar' via httpx.MockTransport."""
 
     def __init__(self) -> None:
         self.sgs: dict[int, dict[dt.date, float]] = {}
@@ -28,6 +28,9 @@ class FakeServer:
         # dict/list = JSON response; int = HTTP error status.
         self.resgatar: Any = json.loads(
             (FIXTURES / "resgatar_sample.json").read_text(encoding="utf-8")
+        )
+        self.focus: Any = json.loads(
+            (FIXTURES / "focus_sample.json").read_text(encoding="utf-8")
         )
         self.calls: list[str] = []
 
@@ -60,6 +63,10 @@ class FakeServer:
             if isinstance(self.resgatar, int):
                 return httpx.Response(self.resgatar, text="error")
             return httpx.Response(200, json=self.resgatar)
+        if "olinda" in url:
+            if isinstance(self.focus, int):
+                return httpx.Response(self.focus, text="error")
+            return httpx.Response(200, json=self.focus)
         return httpx.Response(404)
 
     def client(self) -> httpx.Client:

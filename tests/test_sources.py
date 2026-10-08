@@ -8,10 +8,12 @@ from br_fixed_income.sources import (
     RedemptionPrice,
     SourceError,
     download_tesouro_csv,
+    fetch_focus_ipca,
     fetch_ipca,
     fetch_resgatar,
     fetch_sgs,
     find_redemption_price,
+    parse_focus_ipca,
     parse_resgatar,
     parse_tesouro_csv,
 )
@@ -80,6 +82,60 @@ def test_ipca_keyed_by_month(server):
         values = fetch_ipca(c, D(2026, 7, 15), D(2026, 10, 6))
     assert values == {D(2026, 7, 1): 0.07, D(2026, 8, 1): -0.32}
     assert "dataInicial=01/07/2026" in server.calls[0]
+
+
+# --- Focus survey --------------------------------------------------------
+
+
+def test_focus_uses_latest_survey(server):
+    with server.client() as c:
+        values = fetch_focus_ipca(c, D(2026, 10, 5))
+    # The sample has surveys from 10-01 and 10-02; only 10-02 is used.
+    assert values == {
+        D(2026, 9, 1): 0.6,
+        D(2026, 10, 1): 0.32,
+        D(2026, 11, 1): 0.35,
+    }
+
+
+def test_focus_query(server):
+    with server.client() as c:
+        fetch_focus_ipca(c, D(2026, 10, 5))
+    url = httpx.URL(server.calls[0])
+    query_filter = url.params["$filter"]
+    assert "Indicador eq 'IPCA'" in query_filter
+    assert "baseCalculo eq 0" in query_filter
+    assert "Data ge '2026-09-05'" in query_filter
+    assert "Data le '2026-10-05'" in query_filter
+    # Olinda rejects '+' as the encoding of a space.
+    assert "+" not in url.query.decode()
+
+
+def test_focus_skips_malformed_rows():
+    rows = [
+        {"Data": "2026-10-02", "DataReferencia": "10/2026", "Mediana": 0.32},
+        {"Data": "2026-10-02", "DataReferencia": "bad", "Mediana": 0.5},
+        {"Data": "2026-10-02", "DataReferencia": "11/2026"},
+        "not a row",
+    ]
+    assert parse_focus_ipca(rows) == {D(2026, 10, 1): 0.32}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(500, text="error"),
+        httpx.Response(200, text="<html>"),
+        httpx.Response(200, json={"value": []}),
+        httpx.Response(200, json={"unexpected": True}),
+    ],
+)
+def test_focus_failure_becomes_source_error(response):
+    with (
+        httpx.Client(transport=httpx.MockTransport(lambda r: response)) as c,
+        pytest.raises(SourceError, match="Focus"),
+    ):
+        fetch_focus_ipca(c, D(2026, 10, 5))
 
 
 # --- Tesouro Transparente CSV -------------------------------------------

@@ -1,0 +1,11 @@
+{
+  "@odata.context": "https://was-p.bcnet.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata$metadata#ExpectativaMercadoMensais(Data,DataReferencia,Mediana)",
+  "value": [
+    {"Data": "2026-10-02", "DataReferencia": "10/2026", "Mediana": 0.32},
+    {"Data": "2026-10-02", "DataReferencia": "09/2026", "Mediana": 0.6},
+    {"Data": "2026-10-02", "DataReferencia": "11/2026", "Mediana": 0.35},
+    {"Data": "2026-10-01", "DataReferencia": "10/2026", "Mediana": 0.33},
+    {"Data": "2026-10-01", "DataReferencia": "09/2026", "Mediana": 0.58},
+    {"Data": "2026-10-01", "DataReferencia": "11/2026", "Mediana": 0.35}
+  ]
+}

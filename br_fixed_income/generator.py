@@ -26,6 +26,7 @@ from .sources import (
     SourceError,
     TesouroPrices,
     download_tesouro_csv,
+    fetch_focus_ipca,
     fetch_ipca,
     fetch_resgatar,
     fetch_sgs,
@@ -90,6 +91,21 @@ class DataSources:
         return self._once(
             "IPCA", lambda: fetch_ipca(self.client, start, self.until)
         )
+
+    def focus_ipca(self) -> dict[dt.date, float] | None:
+        """Focus IPCA expectations; any failure is tolerated (returns None)."""
+        if "FOCUS" not in self._memo:
+            try:
+                value = fetch_focus_ipca(self.client, self.until)
+            except SourceError as e:
+                logger.warning(
+                    "%s. Unpublished IPCA months will repeat the last"
+                    " published value.",
+                    e,
+                )
+                value = None
+            self._memo["FOCUS"] = (value, None)
+        return self._memo["FOCUS"][0]
 
     def tesouro(self) -> TesouroPrices:
         keys = {
@@ -162,6 +178,7 @@ def build_series(
             start,
             end,
             cal,
+            data.focus_ipca() if bond.use_focus_survey else None,
         )
     elif bond.type == "TESOURO":
         series = _tesouro_series(bond, data, cal, start, end, today)

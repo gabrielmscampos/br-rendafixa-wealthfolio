@@ -1,4 +1,4 @@
-"""Access to the public data sources: BCB's SGS and Tesouro Direto."""
+"""Access to the public data sources: BCB's SGS and Focus, and Tesouro Direto."""
 
 import csv
 import datetime as dt
@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -25,6 +26,13 @@ SERIES_IPCA = 433
 # SGS limits daily series to 10 years per request and rejects windows that
 # touch the limit; 5 years leaves some slack.
 SGS_WINDOW = dt.timedelta(days=5 * 365)
+
+FOCUS_URL = (
+    "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/"
+    "ExpectativaMercadoMensais"
+)
+# How far back to look for the latest survey on or before the requested date.
+FOCUS_LOOKBACK = dt.timedelta(days=30)
 
 TESOURO_CSV_URL = (
     "https://www.tesourotransparente.gov.br/ckan/dataset/"
@@ -146,6 +154,68 @@ def fetch_ipca(
             client, SERIES_IPCA, start, end, **kwargs
         ).items()
     }
+
+
+# --------------------------------------------------------------------------
+# Banco Central (Focus market expectations survey)
+# --------------------------------------------------------------------------
+
+
+def fetch_focus_ipca(
+    client: httpx.Client, as_of: dt.date
+) -> dict[dt.date, float]:
+    """Monthly IPCA expectations (median, % per month) from the latest Focus
+    survey on or before `as_of`, keyed by the first day of the reference month.
+
+    Uses the 30-day respondent base (baseCalculo 0), as in the weekly Focus report.
+    """
+    params = {
+        "$filter": (
+            "Indicador eq 'IPCA' and baseCalculo eq 0"
+            f" and Data ge '{as_of - FOCUS_LOOKBACK:%Y-%m-%d}'"
+            f" and Data le '{as_of:%Y-%m-%d}'"
+        ),
+        "$select": "Data,DataReferencia,Mediana",
+        "$top": "10000",
+        "$format": "json",
+    }
+    # Olinda rejects spaces encoded as '+', so the query uses %20.
+    url = FOCUS_URL + "?" + urlencode(params, quote_via=quote)
+    try:
+        resp = client.get(url)
+        resp.raise_for_status()
+        rows = resp.json()["value"]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        raise SourceError(
+            f"failed to query the Focus survey (IPCA expectations): {e}"
+        ) from None
+    expectations = parse_focus_ipca(rows)
+    if not expectations:
+        raise SourceError(
+            f"no Focus IPCA survey between {as_of - FOCUS_LOOKBACK} and {as_of}"
+        )
+    return expectations
+
+
+def parse_focus_ipca(rows: Any) -> dict[dt.date, float]:
+    """Medians of the most recent survey date among `rows`."""
+    if not isinstance(rows, list):
+        return {}
+    dates = [r["Data"] for r in rows if isinstance(r, dict) and "Data" in r]
+    if not dates:
+        return {}
+    latest = max(dates)
+    expectations: dict[dt.date, float] = {}
+    for r in rows:
+        if not isinstance(r, dict) or r.get("Data") != latest:
+            continue
+        try:
+            month, year = (int(p) for p in r["DataReferencia"].split("/"))
+            expectations[dt.date(year, month, 1)] = float(r["Mediana"])
+        except (KeyError, TypeError, ValueError, AttributeError):
+            logger.debug("Focus: skipped row: %r", r)
+    logger.debug("Focus: survey of %s, %d months", latest, len(expectations))
+    return expectations
 
 
 # --------------------------------------------------------------------------
