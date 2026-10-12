@@ -6,6 +6,7 @@ import difflib
 import io
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from .logger import logger
 from .tesouro_map import normalize_name, strip_year
 
 
-USER_AGENT = "br-rendafixa-wealthfolio-generator/0.1"
+USER_AGENT = "br-rendafixa-wealthfolio/0.1"
 
 SGS_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{series}/dados"
 SERIES_CDI = 12
@@ -257,6 +258,13 @@ class TesouroPrices:
                 f"{original} (maturities: {', '.join(m.isoformat() for m in sorted(nearest))})"
             )
         return "; ".join(parts)
+
+
+def default_tesouro_cache(env: Mapping[str, str] = os.environ) -> Path:
+    base = env.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return (
+        Path(base) / "br-rendafixa-wealthfolio" / "precotaxatesourodireto.csv"
+    )
 
 
 def download_tesouro_csv(

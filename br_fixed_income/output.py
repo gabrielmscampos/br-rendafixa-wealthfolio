@@ -1,6 +1,7 @@
 """Writing quote CSVs in Wealthfolio's import format."""
 
 import csv
+import io
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -39,15 +40,20 @@ def _row(symbol: str, q: Quote) -> dict[str, str]:
     }
 
 
+def format_csv(symbol: str, quotes: Sequence[Quote]) -> str:
+    buffer = io.StringIO()
+    w = csv.DictWriter(buffer, fieldnames=COLUMNS, lineterminator="\n")
+    w.writeheader()
+    for q in quotes:
+        w.writerow(_row(symbol, q))
+    return buffer.getvalue()
+
+
 def write_csv(path: Path, symbol: str, quotes: Sequence[Quote]) -> None:
     """Writes atomically: a failed bond never leaves a partial file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=COLUMNS, lineterminator="\n")
-        w.writeheader()
-        for q in quotes:
-            w.writerow(_row(symbol, q))
+    tmp.write_text(format_csv(symbol, quotes), encoding="utf-8", newline="")
     os.replace(tmp, path)
 
 

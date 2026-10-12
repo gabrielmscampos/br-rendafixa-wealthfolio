@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "br-rendafixa-wealthfolio-generator"
+name = "br-rendafixa-wealthfolio"
 dynamic = ["version"]
 description = "Generates historical quote CSVs for Brazilian fixed income, for import into Wealthfolio."
 readme = "README.md"
@@ -32,6 +32,10 @@ quality = [
     "pre-commit>=4.6.2",
     "ruff>=0.16.10",
     "types-pyyaml>=6.0.12.20260906",
+]
+rest_api = [
+    "fastapi>=0.142.4",
+    "uvicorn>=0.54.0",
 ]
 
 [tool.setuptools]

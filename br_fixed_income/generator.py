@@ -2,6 +2,7 @@
 
 import datetime as dt
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,45 @@ class DataSources:
                 value = None
             self._memo["RESGATAR"] = (value, None)
         return self._memo["RESGATAR"][0]
+
+
+@dataclass(frozen=True)
+class BondResult:
+    """Outcome of one bond in a run: a series, or the error that stopped it."""
+
+    bond: Bond
+    series: Series | None = None
+    error: str | None = None
+
+
+def generate(
+    client: httpx2.Client,
+    bonds: Sequence[Bond],
+    until: dt.date,
+    today: dt.date,
+    *,
+    use_resgatar: bool = True,
+    tesouro_cache: Path | None = None,
+    skip_purchase_date: bool = False,
+) -> list[BondResult]:
+    """Builds every bond's series. A failing bond never stops the others."""
+    cal = BusinessCalendar()
+    data = DataSources(client, bonds, until, use_resgatar, tesouro_cache)
+    results = []
+    for b in bonds:
+        logger.debug("Processing %s (%s)", b.symbol, b.description or b.type)
+        try:
+            series = build_series(
+                b, data, cal, until, today, skip_purchase_date
+            )
+        except (SourceError, PricingError) as e:
+            logger.error("%s: %s", b.symbol, e)
+            results.append(BondResult(b, error=str(e)))
+            continue
+        for warning in series.warnings:
+            logger.warning("%s: %s", b.symbol, warning)
+        results.append(BondResult(b, series=series))
+    return results
 
 
 def _bank_terms(bond: Bond) -> tuple[float, float]:

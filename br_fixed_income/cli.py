@@ -2,16 +2,14 @@
 
 import argparse
 import datetime as dt
-import os
 from pathlib import Path
 
 from .bonds import InputError, load_bonds
-from .business_days import BusinessCalendar, today_in_brazil
-from .generator import DataSources, build_series
+from .business_days import today_in_brazil
+from .generator import generate
 from .logger import logger, setup_logging
 from .output import table, write_csv
-from .pricing import PricingError
-from .sources import SourceError, new_client
+from .sources import default_tesouro_cache, new_client
 
 
 def _date(text: str) -> dt.date:
@@ -21,15 +19,6 @@ def _date(text: str) -> dt.date:
         raise argparse.ArgumentTypeError(
             f"invalid date: {text!r} (use YYYY-MM-DD)"
         ) from None
-
-
-def _cache_path() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return (
-        Path(base)
-        / "br-rendafixa-wealthfolio-generator"
-        / "precotaxatesourodireto.csv"
-    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -115,48 +104,40 @@ def main(argv: list[str] | None = None, today: dt.date | None = None) -> int:
         logger.error("no bond with purchase_date up to %s", until)
         return 2
 
-    cal = BusinessCalendar()
-    rows: list[tuple[str, ...]] = []
-    failures = 0
     with new_client() as client:
-        data = DataSources(
+        results = generate(
             client,
             bonds,
             until,
+            today,
             use_resgatar=not args.no_tesouro_api,
-            tesouro_cache=None if args.no_cache else _cache_path(),
+            tesouro_cache=None if args.no_cache else default_tesouro_cache(),
+            skip_purchase_date=args.skip_purchase_date,
         )
-        for b in bonds:
-            logger.debug(
-                "Processing %s (%s)", b.symbol, b.description or b.type
-            )
-            try:
-                series = build_series(
-                    b, data, cal, until, today, args.skip_purchase_date
-                )
-            except (SourceError, PricingError) as e:
-                failures += 1
-                logger.error("%s: %s", b.symbol, e)
-                rows.append((b.symbol, "-", "-", "-", "-", "-", f"ERROR: {e}"))
-                continue
-            for warning in series.warnings:
-                logger.warning("%s: %s", b.symbol, warning)
-            if not args.check:
-                write_csv(
-                    args.output / f"{b.symbol}.csv", b.symbol, series.quotes
-                )
-            first, last = series.quotes[0], series.quotes[-1]
+
+    rows: list[tuple[str, ...]] = []
+    for r in results:
+        if r.series is None:
             rows.append(
-                (
-                    b.symbol,
-                    str(len(series.quotes)),
-                    first.date.isoformat(),
-                    last.date.isoformat(),
-                    f"{last.price:.6f}",
-                    last.source,
-                    "; ".join(series.warnings),
-                )
+                (r.bond.symbol, "-", "-", "-", "-", "-", f"ERROR: {r.error}")
             )
+            continue
+        quotes = r.series.quotes
+        if not args.check:
+            write_csv(
+                args.output / f"{r.bond.symbol}.csv", r.bond.symbol, quotes
+            )
+        rows.append(
+            (
+                r.bond.symbol,
+                str(len(quotes)),
+                quotes[0].date.isoformat(),
+                quotes[-1].date.isoformat(),
+                f"{quotes[-1].price:.6f}",
+                quotes[-1].source,
+                "; ".join(r.series.warnings),
+            )
+        )
 
     print()
     print(
@@ -177,4 +158,4 @@ def main(argv: list[str] | None = None, today: dt.date | None = None) -> int:
         print("\n--check mode: no files written.")
     else:
         print(f"\nCSVs written to {args.output}/")
-    return 1 if failures else 0
+    return 1 if any(r.series is None for r in results) else 0
