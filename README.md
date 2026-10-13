@@ -206,7 +206,7 @@ uv sync --group rest_api
 uv run python -m rest_api
 ```
 
-With docker-compose, next to Wealthfolio (adjust the paths to where this repository lives):
+With docker-compose, next to Wealthfolio, using the image published to GitHub Container Registry on each release (`latest`, or pin a version such as `0.2.0`):
 
 ```yaml
 services:
@@ -214,7 +214,9 @@ services:
   #   ...your existing Wealthfolio service...
 
   bonds-api:
-    build: ./br-rendafixa-wealthfolio
+    image: ghcr.io/gabrielmscampos/br-rendafixa-wealthfolio:latest
+    # Or build from a checkout of this repository:
+    # build: ./br-rendafixa-wealthfolio
     restart: unless-stopped
     volumes:
       - ./bonds.yaml:/data/bonds.yaml:ro
